@@ -1,0 +1,36 @@
+###################################################################
+# Dataset parameters and other settings
+################################################################################
+
+kitti_dir: "E:/Datasets/SemanticKitti/dataset/Kitti/sequences/"
+#kitti_dir: "/media/furqan/Data/Projects/PointCloud3D/Dataset/sequences/"
+
+max_points: 100000 # max of any scan in dataset
+skip_frames: 0
+input_channels : 5
+
+sensor:
+  fov_up: 3
+  fov_down: -25
+  img_prop:
+    width: 1024
+    height: 64
+  img_means: #range,x,y,z,signal
+    - 12.12
+    - 10.88
+    - 0.23
+    - -1.04
+    - 0.21
+  img_stds: #range,x,y,z,signal
+    - 12.32
+    - 11.47
+    - 6.91
+    - 0.86
+    - 0.16
+timeframes: 3
+calibrate: True
+intervals:
+  - 8
+  - 15
+  - 25
+  - 40
