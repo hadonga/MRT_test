@@ -170,7 +170,7 @@ class Dataset_kitti(Dataset):
         # self.proj_y_ord = np.zeros((0, 1), dtype=np.int32)
         # self.proj_x_ord = np.zeros((0, 1), dtype=np.int32)
         self.proj_mask = np.zeros((self.proj_H, self.proj_W), dtype=np.int32)  # [H,W] mask
-        self.proj_sem_label = np.full((self.proj_H, self.proj_W), -1, dtype=np.int32)
+        self.proj_sem_label = np.full((self.proj_H, self.proj_W), 0, dtype=np.int32)
         self.proj_ins_label = np.full((self.proj_H, self.proj_W), -1, dtype=np.int32)
         self.proj_cat = np.zeros((5, self.proj_H, self.proj_W), dtype=np.int32)
         self.masked_label = []
@@ -303,6 +303,9 @@ class Dataset_kitti(Dataset):
         self.proj_sem_label[proj_y, proj_x] = self.label_ord
         self.proj_ins_label[proj_y, proj_x] = self.label_ins
 
+        # only for testing
+        # self.proj_sem_label[np.logical_not(self.proj_mask)]=self.classes
+
     # function to concatenate projected features in shape 5*H*W [complete]
     def get_range_image(self):
         rem = np.expand_dims(self.proj_remission, axis=0)
@@ -322,39 +325,32 @@ class Dataset_kitti(Dataset):
 
     def apply_range_limits(self, lower, upper, get_label=True):
 
-        rem = np.full((self.proj_H, self.proj_W), -1, dtype=np.float32)
-        proj_range = np.full((self.proj_H, self.proj_W), -1, dtype=np.float32)
-        proj_xyz = np.full((self.proj_H, self.proj_W, 3), -1, dtype=np.float32)
-        proj_sem_label = np.full((self.proj_H, self.proj_W, 3), -1, dtype=np.int32)
+        rem = np.zeros((self.proj_H, self.proj_W), dtype=np.float32)
+        proj_range = np.zeros((self.proj_H, self.proj_W), dtype=np.float32)
+        proj_xyz = np.zeros((self.proj_H, self.proj_W, 3), dtype=np.float32)
+        proj_sem_label = np.zeros((self.proj_H, self.proj_W, 3), dtype=np.int32)
 
         mask = np.logical_and(self.proj_range > lower, self.proj_range < upper)
-        minus_one_mask = self.proj_remission == -1
+        inverse_mask=np.logical_not(mask)
+        # minus_one_mask = self.proj_remission == -1
 
         rem = np.multiply(self.proj_remission, mask)
         proj_range = np.multiply(self.proj_range, mask)
         proj_xyz = np.multiply(np.rollaxis(self.proj_xyz, 2), mask)
-        #
-        # rem_new= rem -(1*minus_one_mask)
-        # proj_range_new= proj_range- (1*minus_one_mask)
-        # proj_xyz_new = proj_xyz-(1*minus_one_mask)
 
-        rem = np.multiply(self.proj_remission, mask) - (1 * minus_one_mask)
-        proj_range = np.multiply(self.proj_range, mask) - (1 * minus_one_mask)
-        proj_xyz = np.multiply(np.rollaxis(self.proj_xyz, 2), mask) - (1 * minus_one_mask)
+        rem[inverse_mask]=-1.0
+        proj_range[inverse_mask]=-1.0
+        proj_xyz[0][inverse_mask]=-1.0
+        proj_xyz[1][inverse_mask] = -1.0
+        proj_xyz[2][inverse_mask] = -1.0
+
 
         # self.show_2D_image(range, "frame " + str(lower) + " - " + str(upper), 40, colormap="magma")
 
         if get_label:
             proj_sem_label = self.proj_sem_label
             proj_sem_label = np.multiply(proj_sem_label, mask)
-            proj_sem_label[minus_one_mask]=self.classes
-            # proj_sem_label = np.multiply(proj_sem_label, mask) - (1 * minus_one_mask)
-            # self.show_2D_range(proj_sem_label, "range " + str(lower) + " - " + str(upper), 40, True, False, '')
-            # proj_sem_label[self.proj_sem_label==-1]=-1
-            # self.show_2D_range(proj_sem_label, "range " + str(lower) + " - " + str(upper), 40, True, False, '')
-            # proj_sem_label = np.where(proj_sem_label==0,-1,proj_sem_label)
-            # self.show_2D_range(self.proj_sem_label, "range " + str(lower) + " - " + str(upper), 40, True, False, '')
-            # self.show_2D_range(proj_sem_label, "range " + str(lower) + " - " + str(upper), 40, True, False, '')
+            proj_sem_label[inverse_mask]=self.classes
 
         projection_cat = np.concatenate((np.expand_dims(rem, axis=0), np.expand_dims(proj_range, axis=0), proj_xyz),
                                         axis=0)
@@ -564,19 +560,21 @@ class Dataset_kitti(Dataset):
 
                 concated_proj_range, concated_proj_label = self.multi_range_projection()  # get the multi range data
 
-                single_proj_range, single_proj_label = self.single_range_projection()
+                # single_proj_range, single_proj_label = self.single_range_projection()
 
                 # concated_proj_range, _ = self.multi_range_projection()
 
                 if ite == 0:
                     # saving the data for frame at time = t
-
+                    proj_input_total_time_t=self.get_range_image()
+                    proj_input_total_time_t=copy.deepcopy(proj_input_total_time_t)
                     # other output save
                     # unproj_n_points = points.shape[0]
                     # p_x = np.full((1, unproj_n_points), -1, dtype=np.int32)
                     # p_x[:unproj_n_points] = self.proj_x
                     # p_y = np.full((1, unproj_n_points), -1, dtype=np.int32)
                     # p_y[:unproj_n_points] = self.proj_y
+                    mask_copy=copy.deepcopy(self.proj_mask)
                     p_x, p_y = copy.deepcopy(self.proj_x), copy.deepcopy(self.proj_y)
 
                     unproj_range, curr_points, curr_rem, curr_lab = copy.deepcopy(self.unproj_range), \
@@ -608,7 +606,9 @@ class Dataset_kitti(Dataset):
                     "gt_multi_pixel": proj_multi_label,# single pixel label - size: Bx5xHxW
                     "single_data": concat_time_frames[0][0].astype(np.float32),  # pixel features -size: Bx5xHxW
                     "gt_single_pixel": proj_multi_label[0].astype(np.float32),  # single pixel label - size: BxHxW
-
+                    "proj_input_total_time_t": proj_input_total_time_t,
+                    "proj_single_label": proj_single_label,
+                    "proj_mask":mask_copy,
                     # "unproj_range": unproj_range, # range information of points - size: Bx100,000x1
                     # "p_x": p_x,"p_y": p_y, # point location in image - size: Bx100,000
                     # "points":curr_points, # point features - size : size: Bx100,000x3

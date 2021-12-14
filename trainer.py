@@ -46,14 +46,44 @@ def get_param():
     return hparams, kitti_param, kitti_config
 
 
+def show_2D_range(range_2D, title, scale, show_plot=True, save_image=False, path=''):
+    colormapfile='config/labels/semantickitti/colormap.yaml'
+    with open(colormapfile, 'r') as stream:
+         colormapfile = yaml.safe_load(stream)
+    color_map=colormapfile['color_map']
+    plt.figure(figsize=((proj_W / scale) - 2, (proj_H / scale) + 0.5))
+    plt.title(title)
+    image = np.array([[color_map[val] for val in row] for row in range_2D], dtype='B')
+    plt.imshow(image)
+    plt.show()
+
+    # 2D visualization any image
+
+def show_2D_image(image, title, scale, colormap="magma"):
+    cmap = plt.cm.get_cmap(colormap, 10)
+    plt.figure(figsize=((proj_W / scale) - 2, (proj_H / scale) + 0.5))
+    plt.title(title)
+    plt.imshow(image, cmap=cmap)
+    # plt.colorbar()
+    plt.show()
+
+
 
 
 hparams, kitti_param, kitti_config = get_param()
 
 data_dir='/home/share/dataset/semanticKITTI/sequences/'
 
+batchSize=4
+
 train_dataset = Dataset_kitti(data_dir,kitti_param, kitti_config, step='train')
-dataloader = DataLoader(train_dataset, batch_size=8, shuffle=False, num_workers=4, pin_memory=True, drop_last=True)
+
+# data=train_dataset[0]
+# input,gt=data["proj_input_total_time_t"], data["proj_single_label"]
+# show_2D_range(gt, "ground truth", 40)
+# show_2D_image(input[1], "input", 40)
+
+dataloader = DataLoader(train_dataset, batch_size=batchSize, shuffle=False, num_workers=4, pin_memory=True, drop_last=True)
 
 # datadict = train_dataset[75]
 #
@@ -61,28 +91,31 @@ dataloader = DataLoader(train_dataset, batch_size=8, shuffle=False, num_workers=
 # gt=datadict["gt_multi_pixel"]
 
 
-#no of classes 2 in our case (car, environment)
+# wandb.init()
 
-model= UNet(hparams.n_channels, hparams.n_classes+1)
+model= UNet(hparams.n_channels, hparams.n_classes)
 print("Model has {} paramerters in total".format(sum(x.numel() for x in model.parameters())))
 #
 if torch.cuda.device_count() > 1:
     model = nn.DataParallel(model)
 model.cuda()
 
-loss_crs = nn.CrossEntropyLoss(reduction='mean').cuda()
+loss_crs = nn.CrossEntropyLoss(ignore_index=hparams.n_classes,reduction='mean').cuda()
 
-optimizer = torch.optim.SGD(model.parameters(), lr=0.005,momentum=0.9, weight_decay=0.0001)
-
-
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.35, patience=5, verbose=True,
-                                                       threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0,
-                                                       eps=1e-08)
-
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.005,moment, weight_decay=0.9)
+# optimizer = torch.optim.SGD(model.parameters(), lr=0.005,momentum=0.9, weight_decay=0.0001)
+#
+#
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.35, patience=5, verbose=True,
 #                                                        threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0,
 #                                                        eps=1e-08)
+
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.9)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=2, verbose=True,
+                                                       threshold=0.00001, threshold_mode='rel', cooldown=0, min_lr=0,
+                                                       eps=1e-08)
+
+data_length=len(train_dataset)
+
 summary(model, input_size=(5, 64, 1024))
 # print(model)
 
@@ -107,12 +140,12 @@ def main():
             optimizer.zero_grad()
             out = model(input)
             loss = loss_crs(out, gt)
-            print("Batch", batch_idx, "epoch", epoch,"loss",loss)
+            print("Batch", batch_idx," of ",int(data_length/batchSize), "epoch", epoch,"loss",loss.item())
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
             step_losses.append(loss.item())
-            # wandb.log({'loss': epoch_loss})
+            # wandb.log({'loss': loss.item()})
         epoch_losses.append(epoch_loss / len(dataloader))
         # wandb.log({'epoch_loss': epoch_losses[batch_idx]})
         print("epoch loss",epoch_losses)
@@ -122,7 +155,7 @@ def main():
 if __name__ == '__main__':
     main()
 
-    model_name = "Range_Net_Test_epoch25.pth"
+    model_name = "test_model.pth"
     torch.save(model.state_dict(), model_name)
 
     print("done")

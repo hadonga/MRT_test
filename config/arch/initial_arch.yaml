@@ -30,7 +30,7 @@ sensor:
 timeframes: 3
 calibrate: True
 intervals:
-  - 8
-  - 15
-  - 25
-  - 40
+  - 50
+  - 60
+  - 70
+  - 75
